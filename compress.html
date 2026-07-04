@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ImageFuse · AI 图片压缩</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+
+:root {
+  --bg: #000;
+  --bg-surface: #0a0a0b;
+  --bg-card: rgba(255,255,255,0.04);
+  --bg-card-hover: rgba(255,255,255,0.07);
+  --bg-elevated: rgba(255,255,255,0.06);
+  --border: rgba(255,255,255,0.08);
+  --border-hover: rgba(255,255,255,0.16);
+  --border-active: rgba(255,255,255,0.24);
+  --text: #ededed;
+  --text-secondary: #888;
+  --text-tertiary: #555;
+  --accent: #3b82f6;
+  --accent-glow: rgba(59,130,246,0.25);
+  --accent-hover: #60a5fa;
+  --green: #22c55e;
+  --green-glow: rgba(34,197,94,0.2);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-full: 9999px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+html{background:var(--bg);color:var(--text);font-family:var(--font);-webkit-font-smoothing:antialiased}
+body{min-height:100vh;display:flex;flex-direction:column}
+
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:var(--radius-full)}
+::-webkit-scrollbar-thumb:hover{background:var(--border-hover)}
+
+.header{display:flex;align-items:center;gap:10px;padding:16px 24px;border-bottom:1px solid var(--border)}
+.header-logo{width:28px;height:28px;border-radius:var(--radius-sm);background:linear-gradient(135deg,var(--accent),#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0}
+.header h1{font-size:16px;font-weight:600;letter-spacing:-0.01em}
+.header-badge{font-size:10px;padding:2px 8px;border-radius:var(--radius-full);background:var(--accent-glow);color:var(--accent);font-weight:500;border:1px solid rgba(59,130,246,0.2);letter-spacing:0.02em}
+
+.main{flex:1;max-width:720px;width:100%;margin:0 auto;padding:40px 24px 60px;display:flex;flex-direction:column;gap:24px}
+
+.section{border-radius:var(--radius);border:1px solid var(--border);background:var(--bg-surface);overflow:hidden;transition:border-color .2s}
+.section-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);font-size:13px;font-weight:500;color:var(--text-secondary)}
+.section-body{padding:18px}
+
+.upload-zone{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:48px 24px;border:1.5px dashed var(--border);border-radius:var(--radius);background:var(--bg-card);cursor:pointer;transition:all .25s;min-height:200px}
+.upload-zone:hover{border-color:var(--border-hover);background:var(--bg-card-hover)}
+.upload-zone.dragover{border-color:var(--accent);background:rgba(59,130,246,0.06);box-shadow:0 0 0 4px var(--accent-glow)}
+.upload-zone.has-image{padding:0;border-style:solid;border-color:var(--border);background:transparent;cursor:default;min-height:auto}
+.upload-zone.has-image:hover{border-color:var(--border);background:transparent}
+
+.upload-icon{width:44px;height:44px;border-radius:var(--radius);background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;color:var(--text-secondary);transition:color .2s}
+.upload-zone:hover .upload-icon{color:var(--text)}
+.upload-zone.dragover .upload-icon{color:var(--accent)}
+.upload-label{font-size:14px;font-weight:500;text-align:center}
+.upload-label span{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.upload-hint{font-size:12px;color:var(--text-tertiary);text-align:center}
+
+.upload-input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.upload-zone.has-image .upload-input{display:none}
+
+.preview-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.preview-col{display:flex;flex-direction:column;gap:8px}
+.preview-label{font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em}
+.preview-image-wrap{position:relative;border-radius:var(--radius-sm);background:var(--bg-card);overflow:hidden;aspect-ratio:16/10;display:flex;align-items:center;justify-content:center}
+.preview-image-wrap img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.preview-image-wrap .empty-state{font-size:12px;color:var(--text-tertiary)}
+
+.file-info{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.file-info-row{display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary)}
+.file-info-row .label{color:var(--text-tertiary)}
+.file-info-row .value{font-family:var(--font-mono);font-size:11px}
+.file-info-row .value.saved{color:var(--green)}
+
+.controls{padding-top:4px;display:flex;flex-direction:column;gap:16px}
+.control-row{display:flex;align-items:center;gap:14px}
+.control-row label{font-size:12px;color:var(--text-secondary);white-space:nowrap;min-width:52px}
+
+.quality-group{display:flex;align-items:center;gap:10px;flex:1}
+.quality-group input[type="range"]{-webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:2px;background:var(--border);outline:none;transition:background .2s}
+.quality-group input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg);box-shadow:0 0 0 1px var(--border-active);transition:transform .15s}
+.quality-group input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.15)}
+.quality-group input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg);box-shadow:0 0 0 1px var(--border-active)}
+.quality-value{font-family:var(--font-mono);font-size:12px;color:var(--text);min-width:36px;text-align:right}
+
+.format-group{display:flex;gap:6px}
+.format-btn{padding:5px 14px;border-radius:var(--radius-full);border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;font-family:var(--font)}
+.format-btn:hover{border-color:var(--border-hover);color:var(--text)}
+.format-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 22px;border-radius:var(--radius-full);border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:var(--font);text-decoration:none}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 0 20px var(--accent-glow)}
+.btn-primary:hover{background:var(--accent-hover);box-shadow:0 0 28px var(--accent-glow)}
+.btn-primary:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
+.btn-primary:disabled:hover{background:var(--accent);box-shadow:0 0 20px var(--accent-glow)}
+.btn-secondary{background:var(--bg-elevated);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:var(--bg-card-hover);border-color:var(--border-hover)}
+.btn-success{background:var(--green);color:#fff;box-shadow:0 0 20px var(--green-glow)}
+.btn-success:hover{background:#16a34a;box-shadow:0 0 28px var(--green-glow)}
+
+.btn-group{display:flex;gap:10px;flex-wrap:wrap}
+.btn-group .btn{flex:1;min-width:120px}
+
+.loading-overlay{display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px}
+.loading-overlay.active{display:flex}
+.spinner{width:28px;height:28px;border:2.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;color:var(--text-secondary)}
+.loading-progress{width:200px;height:3px;border-radius:2px;background:var(--border);overflow:hidden}
+.loading-progress-bar{height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width .3s}
+
+.results-content{display:none}
+.results-content.active{display:block}
+.upload-content{display:flex;flex-direction:column;align-items:center;gap:12px}
+.upload-content.hidden{display:none}
+
+.success-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--green);font-weight:500;padding:4px 12px;border-radius:var(--radius-full);background:var(--green-glow);margin-bottom:8px}
+
+@media(max-width:600px){
+  .main{padding:20px 16px 40px;gap:16px}
+  .upload-zone{padding:36px 16px;min-height:160px}
+  .preview-grid{grid-template-columns:1fr;gap:12px}
+  .section-body{padding:14px}
+  .control-row{flex-direction:column;align-items:stretch;gap:8px}
+  .control-row label{min-width:auto}
+  .quality-group input[type="range"]{width:100%}
+  .format-group{flex-wrap:wrap}
+  .btn-group{flex-direction:column}
+  .header{padding:12px 16px}
+}
+
+.fade-in{animation:fadeIn .35s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+.icon-svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.icon-svg-sm{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+.comparison-bar{display:flex;gap:0;height:4px;border-radius:2px;overflow:hidden;margin-top:8px}
+.comparison-bar .orig{background:var(--text-tertiary);transition:width .4s}
+.comparison-bar .comp{background:var(--accent);transition:width .4s}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-logo">IF</div>
+  <h1>ImageFuse</h1>
+  <span class="header-badge">AI 压缩</span>
+</header>
+
+<div class="main">
+
+  <div class="section">
+    <div class="section-header">
+      <span>上传图片</span>
+      <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    </div>
+    <div class="section-body">
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" class="upload-input" id="fileInput" accept="image/jpeg,image/png,image/webp">
+        <div class="upload-content" id="uploadContent">
+          <div class="upload-icon">
+            <svg class="icon-svg" viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          </div>
+          <div class="upload-label">拖拽图片到此处，或<span>点击上传</span></div>
+          <div class="upload-hint">支持 JPG · PNG · WebP</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" id="compressSection" style="display:none">
+    <div class="section-header">
+      <span>压缩设置</span>
+      <div class="format-group" id="formatGroup">
+        <button class="format-btn active" data-format="image/jpeg">JPEG</button>
+        <button class="format-btn" data-format="image/png">PNG</button>
+        <button class="format-btn" data-format="image/webp">WebP</button>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="preview-grid">
+        <div class="preview-col">
+          <div class="preview-label">原图</div>
+          <div class="preview-image-wrap">
+            <img id="originalPreview" alt="">
+          </div>
+          <div class="file-info" id="originalInfo">
+            <div class="file-info-row"><span class="label">大小</span><span class="value" id="originalSize">—</span></div>
+            <div class="file-info-row"><span class="label">尺寸</span><span class="value" id="originalDims">—</span></div>
+          </div>
+        </div>
+        <div class="preview-col" id="resultCol" style="display:none">
+          <div class="preview-label">压缩后</div>
+          <div class="preview-image-wrap">
+            <img id="compressedPreview" alt="">
+          </div>
+          <div class="file-info" id="compressedInfo">
+            <div class="file-info-row"><span class="label">大小</span><span class="value" id="compressedSize">—</span></div>
+            <div class="file-info-row"><span class="label">节省</span><span class="value saved" id="savingsText">—</span></div>
+          </div>
+          <div class="comparison-bar" id="comparisonBar">
+            <div class="orig" id="origBar" style="width:50%"></div>
+            <div class="comp" id="compBar" style="width:50%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="controls" id="controls">
+        <div class="control-row">
+          <label>质量</label>
+          <div class="quality-group">
+            <input type="range" id="qualitySlider" min="10" max="100" value="80">
+            <span class="quality-value" id="qualityDisplay">80</span>
+          </div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-primary" id="compressBtn">
+            <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/></svg>
+            开始压缩
+          </button>
+          <button class="btn btn-secondary" id="resetBtn">重新选择</button>
+        </div>
+      </div>
+
+      <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text">正在压缩图片…</div>
+        <div class="loading-progress">
+          <div class="loading-progress-bar" id="progressBar"></div>
+        </div>
+      </div>
+
+      <div class="results-content" id="resultsContent">
+        <div class="success-badge">
+          <svg class="icon-svg-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          压缩完成
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-success" id="downloadBtn">
+            <svg class="icon-svg-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            下载压缩图片
+          </button>
+          <button class="btn btn-secondary" id="compressAgainBtn">重新压缩</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  const uploadZone     = document.getElementById('uploadZone');
+  const fileInput       = document.getElementById('fileInput');
+  const uploadContent   = document.getElementById('uploadContent');
+  const compressSection = document.getElementById('compressSection');
+  const originalPreview = document.getElementById('originalPreview');
+  const originalSize    = document.getElementById('originalSize');
+  const originalDims    = document.getElementById('originalDims');
+  const resultCol       = document.getElementById('resultCol');
+  const compressedPreview = document.getElementById('compressedPreview');
+  const compressedSize  = document.getElementById('compressedSize');
+  const savingsText     = document.getElementById('savingsText');
+  const origBar         = document.getElementById('origBar');
+  const compBar         = document.getElementById('compBar');
+  const qualitySlider   = document.getElementById('qualitySlider');
+  const qualityDisplay  = document.getElementById('qualityDisplay');
+  const formatGroup     = document.getElementById('formatGroup');
+  const compressBtn     = document.getElementById('compressBtn');
+  const resetBtn        = document.getElementById('resetBtn');
+  const downloadBtn     = document.getElementById('downloadBtn');
+  const compressAgainBtn = document.getElementById('compressAgainBtn');
+  const loadingOverlay  = document.getElementById('loadingOverlay');
+  const progressBar     = document.getElementById('progressBar');
+  const resultsContent   = document.getElementById('resultsContent');
+  const controls         = document.getElementById('controls');
+
+  let originalFile   = null;
+  let originalBlobURL = null;
+  let compressedBlob  = null;
+  let compressedBlobURL = null;
+  let originalImage   = null;
+  let selectedFormat  = 'image/jpeg';
+  let isCompressing   = false;
+  let fileName        = '';
+
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  function getExtension(mime) {
+    switch (mime) {
+      case 'image/jpeg': return '.jpg';
+      case 'image/png':  return '.png';
+      case 'image/webp': return '.webp';
+      default:           return '.jpg';
+    }
+  }
+
+  function getBaseName(name) {
+    const i = name.lastIndexOf('.');
+    return i === -1 ? name : name.slice(0, i);
+  }
+
+  qualitySlider.addEventListener('input', function() {
+    qualityDisplay.textContent = this.value;
+  });
+
+  formatGroup.addEventListener('click', function(e) {
+    const btn = e.target.closest('.format-btn');
+    if (!btn) return;
+    formatGroup.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedFormat = btn.dataset.format;
+  });
+
+  function loadFile(file) {
+    if (!file || !['image/jpeg','image/png','image/webp'].includes(file.type)) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!['jpg','jpeg','png','webp'].includes(ext)) {
+        alert('请上传 JPG、PNG 或 WebP 格式的图片');
+        return;
+      }
+    }
+
+    originalFile = file;
+    fileName = file.name;
+    resetResults();
+
+    if (originalBlobURL) URL.revokeObjectURL(originalBlobURL);
+    originalBlobURL = URL.createObjectURL(file);
+
+    const img = new Image();
+    img.onload = function() {
+      originalImage = img;
+      originalPreview.src = originalBlobURL;
+      originalPreview.alt = file.name;
+      originalSize.textContent = formatBytes(file.size);
+      originalDims.textContent = img.naturalWidth + ' \u00d7 ' + img.naturalHeight + ' px';
+
+      uploadZone.classList.add('has-image');
+      uploadContent.classList.add('hidden');
+      compressSection.style.display = 'block';
+      compressSection.classList.add('fade-in');
+      compressBtn.disabled = false;
+
+      setFormatFromType(file.type);
+    };
+    img.onerror = function() {
+      alert('图片加载失败，请尝试其他文件');
+    };
+    img.src = originalBlobURL;
+  }
+
+  function setFormatFromType(mime) {
+    const btn = formatGroup.querySelector(`[data-format="${mime}"]`);
+    if (btn) {
+      formatGroup.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedFormat = mime;
+    }
+  }
+
+  uploadZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.classList.add('dragover');
+  });
+  uploadZone.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.classList.remove('dragover');
+  });
+  uploadZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) loadFile(files[0]);
+  });
+
+  fileInput.addEventListener('change', function() {
+    if (this.files.length > 0) loadFile(this.files[0]);
+  });
+
+  function resetAll() {
+    if (originalBlobURL) URL.revokeObjectURL(originalBlobURL);
+    if (compressedBlobURL) URL.revokeObjectURL(compressedBlobURL);
+    originalBlobURL = null;
+    compressedBlobURL = null;
+    compressedBlob = null;
+    originalFile = null;
+    originalImage = null;
+    fileName = '';
+    isCompressing = false;
+
+    uploadZone.classList.remove('has-image');
+    uploadContent.classList.remove('hidden');
+    compressSection.style.display = 'none';
+    compressSection.classList.remove('fade-in');
+    resetResults();
+    fileInput.value = '';
+    compressBtn.disabled = true;
+  }
+
+  function resetResults() {
+    resultCol.style.display = 'none';
+    resultsContent.classList.remove('active');
+    loadingOverlay.classList.remove('active');
+    controls.style.display = '';
+    progressBar.style.width = '0%';
+    compressedSize.textContent = '\u2014';
+    savingsText.textContent = '\u2014';
+  }
+
+  resetBtn.addEventListener('click', resetAll);
+  compressAgainBtn.addEventListener('click', function() {
+    resetResults();
+    compressBtn.disabled = false;
+  });
+
+  async function compress() {
+    if (!originalImage || isCompressing) return;
+
+    isCompressing = true;
+    compressBtn.disabled = true;
+
+    controls.style.display = 'none';
+    loadingOverlay.classList.add('active');
+    resultCol.style.display = 'none';
+    resultsContent.classList.remove('active');
+    progressBar.style.width = '10%';
+
+    await sleep(50);
+
+    const quality = parseInt(qualitySlider.value) / 100;
+    const format  = selectedFormat;
+    const img     = originalImage;
+
+    try {
+      progressBar.style.width = '30%';
+      await sleep(30);
+
+      const maxDim = 4096;
+      let sw = img.naturalWidth;
+      let sh = img.naturalHeight;
+
+      if (sw > maxDim || sh > maxDim) {
+        const ratio = Math.min(maxDim / sw, maxDim / sh);
+        sw = Math.round(sw * ratio);
+        sh = Math.round(sh * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, sw, sh);
+
+      progressBar.style.width = '60%';
+      await sleep(30);
+
+      compressedBlob = await new Promise((resolve, reject) => {
+        if (format === 'image/png') {
+          const q = parseInt(qualitySlider.value) / 100;
+          let pw = sw, ph = sh;
+          if (q < 0.5) {
+            const factor = 0.5 + q;
+            pw = Math.round(sw * factor);
+            ph = Math.round(sh * factor);
+          }
+          const pngCanvas = document.createElement('canvas');
+          pngCanvas.width = pw;
+          pngCanvas.height = ph;
+          const pngCtx = pngCanvas.getContext('2d');
+          pngCtx.imageSmoothingEnabled = true;
+          pngCtx.imageSmoothingQuality = 'high';
+          pngCtx.drawImage(canvas, 0, 0, pw, ph);
+          pngCanvas.toBlob(b => b ? resolve(b) : reject(new Error('PNG encoding failed')), 'image/png');
+        } else {
+          canvas.toBlob(b => b ? resolve(b) : reject(new Error('Encoding failed')), format, quality);
+        }
+      });
+
+      progressBar.style.width = '90%';
+      await sleep(50);
+
+      if (compressedBlobURL) URL.revokeObjectURL(compressedBlobURL);
+      compressedBlobURL = URL.createObjectURL(compressedBlob);
+
+      compressedPreview.src = compressedBlobURL;
+      const compSize = compressedBlob.size;
+      const origSize = originalFile.size;
+      const saved = origSize - compSize;
+      const pct = origSize > 0 ? Math.round((saved / origSize) * 100) : 0;
+
+      compressedSize.textContent = formatBytes(compSize);
+
+      if (saved >= 0) {
+        savingsText.textContent = '-' + pct + '% (' + formatBytes(saved) + ')';
+      } else {
+        savingsText.textContent = '+' + Math.abs(pct) + '% (' + formatBytes(Math.abs(saved)) + ')';
+      }
+
+      const total = origSize + compSize;
+      const origPct = total > 0 ? (origSize / total) * 100 : 50;
+      const compPct = total > 0 ? (compSize / total) * 100 : 50;
+      origBar.style.width = origPct + '%';
+      compBar.style.width = compPct + '%';
+
+      progressBar.style.width = '100%';
+      await sleep(150);
+
+      loadingOverlay.classList.remove('active');
+      resultCol.style.display = 'block';
+      resultCol.classList.add('fade-in');
+      resultsContent.classList.add('active');
+
+    } catch (err) {
+      loadingOverlay.classList.remove('active');
+      controls.style.display = '';
+      compressBtn.disabled = false;
+      alert('压缩失败: ' + err.message);
+    } finally {
+      isCompressing = false;
+      progressBar.style.width = '0%';
+    }
+  }
+
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  compressBtn.addEventListener('click', compress);
+
+  downloadBtn.addEventListener('click', function() {
+    if (!compressedBlob) return;
+    const ext = getExtension(compressedBlob.type);
+    const baseName = getBaseName(fileName);
+    const link = document.createElement('a');
+    link.href = compressedBlobURL;
+    link.download = baseName + '_compressed' + ext;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !compressBtn.disabled && compressSection.style.display !== 'none') {
+      compress();
+    }
+  });
+
+  compressBtn.disabled = true;
+})();
+</script>
+</body>
+</html>
